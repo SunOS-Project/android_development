@@ -60,6 +60,8 @@ import {
 import {iconDividerStyle} from 'viewers/components/styles/icon_divider.styles';
 import {ViewerInputMethodComponent} from 'viewers/components/viewer_input_method_component';
 import {Viewer} from 'viewers/viewer';
+import {ViewerInputComponent} from 'viewers/viewer_input/viewer_input_component';
+import {ViewerJankCujsComponent} from 'viewers/viewer_jank_cujs/viewer_jank_cujs_component';
 import {ViewerProtologComponent} from 'viewers/viewer_protolog/viewer_protolog_component';
 import {ViewerScreenRecordingComponent} from 'viewers/viewer_screen_recording/viewer_screen_recording_component';
 import {ViewerSurfaceFlingerComponent} from 'viewers/viewer_surface_flinger/viewer_surface_flinger_component';
@@ -204,6 +206,7 @@ import {UploadTracesComponent} from './upload_traces_component';
       <mat-drawer #drawer mode="overlay" opened="true" [baseHeight]="collapsedTimelineHeight">
         <timeline
           *ngIf="dataLoaded"
+          [allTraces]="tracePipeline.getTraces()"
           [timelineData]="timelineData"
           [store]="store"
           (collapsedTimelineSizeChanged)="onCollapsedTimelineSizeChanged($event)"></timeline>
@@ -438,6 +441,18 @@ export class AppComponent implements WinscopeEventListener {
       customElements.define(
         'viewer-view-capture',
         createCustomElement(ViewerViewCaptureComponent, {injector}),
+      );
+    }
+    if (!customElements.get('viewer-jank-cujs')) {
+      customElements.define(
+        'viewer-jank-cujs',
+        createCustomElement(ViewerJankCujsComponent, {injector}),
+      );
+    }
+    if (!customElements.get('viewer-input')) {
+      customElements.define(
+        'viewer-input',
+        createCustomElement(ViewerInputComponent, {injector}),
       );
     }
 

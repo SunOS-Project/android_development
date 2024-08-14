@@ -160,12 +160,14 @@ export abstract class AbstractHierarchyViewerPresenter
     await this.hierarchyPresenter.applyHierarchyUserOptionsChange(userOptions);
     this.uiData.hierarchyUserOptions = this.hierarchyPresenter.getUserOptions();
     this.uiData.hierarchyTrees = this.hierarchyPresenter.getAllFormattedTrees();
+    this.uiData.pinnedItems = this.hierarchyPresenter.getPinnedItems();
     this.copyUiDataAndNotifyView();
   }
 
   async onHierarchyFilterChange(filterString: string) {
     await this.hierarchyPresenter.applyHierarchyFilterChange(filterString);
     this.uiData.hierarchyTrees = this.hierarchyPresenter.getAllFormattedTrees();
+    this.uiData.pinnedItems = this.hierarchyPresenter.getPinnedItems();
     this.copyUiDataAndNotifyView();
   }
 
@@ -329,6 +331,15 @@ export abstract class AbstractHierarchyViewerPresenter
     // won't detect the new input
     const copy = Object.assign({}, this.uiData);
     this.notifyViewCallback(copy);
+  }
+
+  protected getEntryFormattedTimestamp(
+    entry: TraceEntry<HierarchyTreeNode>,
+  ): string {
+    if (entry.getFullTrace().isDumpWithoutTimestamp()) {
+      return 'Dump';
+    }
+    return entry.getTimestamp().format();
   }
 
   abstract onAppEvent(event: WinscopeEvent): Promise<void>;
