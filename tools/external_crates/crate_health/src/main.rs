@@ -44,7 +44,7 @@ enum Cmd {
         crates: Vec<String>,
 
         /// Don't pin the crate version for the specified crates when checking health.
-        #[arg(long, value_parser = parse_crate_list)]
+        #[arg(long, value_parser = parse_crate_list, required=false, default_value="")]
         unpinned: BTreeSet<String>,
     },
     /// Migrate crates from external/rust/crates to the monorepo.
@@ -53,8 +53,13 @@ enum Cmd {
         crates: Vec<String>,
 
         /// Add the specified crates with unpinned versions.
-        #[arg(long, value_parser = parse_crate_list)]
+        #[arg(long, value_parser = parse_crate_list, required=false, default_value="")]
         unpinned: BTreeSet<String>,
+    },
+    /// Import a crate and its dependencies into the monorepo.
+    Import {
+        /// The crate name.
+        crate_name: String,
     },
     /// Regenerate a crate directory.
     Regenerate {
@@ -97,5 +102,6 @@ fn main() -> Result<()> {
         Cmd::Regenerate { crates } => managed_repo.regenerate(crates.iter(), true),
         Cmd::RegenerateAll {} => managed_repo.regenerate_all(true),
         Cmd::PreuploadCheck { files: _ } => managed_repo.preupload_check(),
+        Cmd::Import { crate_name } => managed_repo.import(&crate_name),
     }
 }
