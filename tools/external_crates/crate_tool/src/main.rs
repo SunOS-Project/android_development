@@ -15,8 +15,8 @@
 use std::{collections::BTreeSet, path::PathBuf};
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
-use crate_health::{default_repo_root, maybe_build_cargo_embargo, ManagedRepo};
+use clap::{Args, Parser, Subcommand};
+use crate_tool::{default_repo_root, maybe_build_cargo_embargo, ManagedRepo};
 use rooted_path::RootedPath;
 
 #[derive(Parser)]
@@ -26,7 +26,11 @@ struct Cli {
 
     // The path to the Android source repo.
     #[arg(long, default_value_os_t=default_repo_root().unwrap_or(PathBuf::from(".")))]
-    repo_root: PathBuf,
+    android_root: PathBuf,
+
+    // The path to the crate monorepo, relative to the Android source repo.
+    #[arg(long, default_value_os_t=PathBuf::from("external/rust/android-crates-io"))]
+    managed_repo_path: PathBuf,
 
     /// Rebuild cargo_embargo and bpfmt, even if they are already present in the out directory.
     #[arg(long, default_value_t = false)]
@@ -62,36 +66,35 @@ enum Cmd {
         unpinned: BTreeSet<String>,
     },
     /// Import a crate and its dependencies into the monorepo.
+    #[command(hide = true)]
     Import {
         /// The crate name.
         crate_name: String,
     },
     /// Regenerate crates from vendored code by applying patches, running cargo_embargo, etc.
     Regenerate {
-        /// The crate names.
-        crates: Vec<String>,
-
-        /// Regenerate all crates.
-        #[arg(long, default_value_t = false)]
-        all: bool,
+        #[command(flatten)]
+        crates: CrateList,
     },
     /// Run pre-upload checks.
     PreuploadCheck {
         /// List of changed files
         files: Vec<String>,
     },
-    /// Try to fix problems with license files.
-    FixLicenses {},
+    /// Fix problems with license files.
+    FixLicenses {
+        #[command(flatten)]
+        crates: CrateList,
+    },
     /// Fix up METADATA files.
-    FixMetadata {},
+    FixMetadata {
+        #[command(flatten)]
+        crates: CrateList,
+    },
     /// Recontextualize patch files.
     RecontextualizePatches {
-        /// The crate names. Also the directory names in external/rust/android-crates-io/crates.
-        crates: Vec<String>,
-
-        /// Recontextualize patches for all crates.
-        #[arg(long, default_value_t = false)]
-        all: bool,
+        #[command(flatten)]
+        crates: CrateList,
     },
     /// Find crates with a newer version on crates.io
     UpdatableCrates {},
@@ -115,8 +118,38 @@ enum Cmd {
     ///
     /// Take about 15 minutes per crate, so suggested use is to tee to a file and let it run overnight:
     ///
-    /// ./android_cargo.py run --bin crate_health -- try-updates | tee crate-updates
+    /// ./android_cargo.py run --bin crate_tool -- try-updates | tee crate-updates
     TryUpdates {},
+    /// Initialize a new managed repo.
+    Init {},
+}
+
+#[derive(Args)]
+struct CrateList {
+    /// The crate names.
+    crates: Vec<String>,
+
+    /// All crates.
+    #[arg(long, default_value_t = false)]
+    all: bool,
+
+    /// Comma-separated list of crates to exclude from --all.
+    #[arg(long, value_parser = parse_crate_list, required=false, default_value="")]
+    exclude: BTreeSet<String>,
+}
+
+impl CrateList {
+    fn to_list(&self, managed_repo: &ManagedRepo) -> Result<Vec<String>> {
+        Ok(if self.all {
+            managed_repo
+                .all_crate_names()?
+                .into_iter()
+                .filter(|crate_name| !self.exclude.contains(crate_name))
+                .collect::<Vec<_>>()
+        } else {
+            self.crates.clone()
+        })
+    }
 }
 
 fn parse_crate_list(arg: &str) -> Result<BTreeSet<String>> {
@@ -126,10 +159,10 @@ fn parse_crate_list(arg: &str) -> Result<BTreeSet<String>> {
 fn main() -> Result<()> {
     let args = Cli::parse();
 
-    maybe_build_cargo_embargo(&args.repo_root, args.rebuild_cargo_embargo)?;
+    maybe_build_cargo_embargo(&args.android_root, args.rebuild_cargo_embargo)?;
 
     let managed_repo = ManagedRepo::new(
-        RootedPath::new(args.repo_root, "external/rust/android-crates-io")?,
+        RootedPath::new(args.android_root, args.managed_repo_path)?,
         args.offline,
     )?;
 
@@ -147,25 +180,25 @@ fn main() -> Result<()> {
             Ok(())
         }
         Cmd::Migrate { crates, unpinned } => managed_repo.migrate(crates, args.verbose, &unpinned),
-        Cmd::Regenerate { crates, all } => managed_repo.regenerate(
-            if all { managed_repo.all_crate_names()?.into_iter() } else { crates.into_iter() },
-            true,
-        ),
+        Cmd::Regenerate { crates } => {
+            managed_repo.regenerate(crates.to_list(&managed_repo)?.into_iter(), true)
+        }
         Cmd::PreuploadCheck { files } => managed_repo.preupload_check(&files),
         Cmd::Import { crate_name } => managed_repo.import(&crate_name),
-        Cmd::FixLicenses {} => managed_repo.fix_licenses(),
-        Cmd::FixMetadata {} => managed_repo.fix_metadata(),
-        Cmd::RecontextualizePatches { crates, all } => {
-            managed_repo.recontextualize_patches(if all {
-                managed_repo.all_crate_names()?.into_iter()
-            } else {
-                crates.into_iter()
-            })
+        Cmd::FixLicenses { crates } => {
+            managed_repo.fix_licenses(crates.to_list(&managed_repo)?.into_iter())
+        }
+        Cmd::FixMetadata { crates } => {
+            managed_repo.fix_metadata(crates.to_list(&managed_repo)?.into_iter())
+        }
+        Cmd::RecontextualizePatches { crates } => {
+            managed_repo.recontextualize_patches(crates.to_list(&managed_repo)?.into_iter())
         }
         Cmd::UpdatableCrates {} => managed_repo.updatable_crates(),
         Cmd::AnalyzeUpdates { crate_name } => managed_repo.analyze_updates(crate_name),
         Cmd::SuggestUpdates { patches } => managed_repo.suggest_updates(patches).map(|_x| ()),
         Cmd::Update { crate_name, version } => managed_repo.update(crate_name, version),
         Cmd::TryUpdates {} => managed_repo.try_updates(),
+        Cmd::Init {} => managed_repo.init(),
     }
 }

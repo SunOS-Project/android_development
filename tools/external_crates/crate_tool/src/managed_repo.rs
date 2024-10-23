@@ -14,7 +14,7 @@
 
 use std::{
     collections::BTreeSet,
-    fs::{create_dir, read_dir, remove_file, write},
+    fs::{create_dir, create_dir_all, read_dir, remove_file, write},
     os::unix::fs::symlink,
     path::Path,
     process::Command,
@@ -167,10 +167,13 @@ impl ManagedRepo {
 
         let pseudo_crate = self.pseudo_crate();
         if unpinned {
-            pseudo_crate.cargo_add_unpinned(krate)?;
+            pseudo_crate.cargo_add_unpinned(krate)
         } else {
-            pseudo_crate.cargo_add(krate)?;
+            pseudo_crate.cargo_add(krate)
         }
+        .inspect_err(|_e| {
+            let _ = pseudo_crate.remove(krate.name());
+        })?;
         let pseudo_crate = pseudo_crate.vendor()?;
 
         let mc = ManagedCrate::new(Crate::from(self.legacy_dir_for(crate_name))?)
@@ -248,12 +251,17 @@ impl ManagedRepo {
                 .wait()?;
         }
 
-        if !mc.patch_success() || !mc.cargo_embargo_success() || !mc.android_bp_unchanged() {
+        // Patching and running cargo_embargo *must* succeed. But if we are migrating with a version change,
+        // there could be some changes to the Android.bp.
+        if !mc.patch_success()
+            || !mc.cargo_embargo_success()
+            || (!mc.android_bp_unchanged() && !unpinned)
+        {
             println!("Crate {} is UNHEALTHY", crate_name);
             return Err(anyhow!("Crate {} is unhealthy", crate_name));
         }
 
-        if diff_status.success() {
+        if diff_status.success() && mc.android_bp_unchanged() {
             println!("Crate {} is healthy", crate_name);
             return Ok(version);
         }
@@ -526,37 +534,16 @@ impl ManagedRepo {
         }
         Ok((added_deps, self.pseudo_crate().vendor()?))
     }
-    pub fn fix_licenses(&self) -> Result<()> {
-        let mut cc = self.new_cc();
-        cc.add_from(self.managed_dir().rel())?;
-
-        for krate in cc.map_field().values() {
-            println!("{} = \"={}\"", krate.name(), krate.version());
-            let state = find_licenses(krate.path().abs(), krate.name(), krate.license())?;
-            if !state.unsatisfied.is_empty() {
-                println!("{:?}", state);
-            } else {
-                // For now, just update MODULE_LICENSE_*
-                update_module_license_files(&krate.path().abs(), &state)?;
-            }
+    pub fn fix_licenses<T: AsRef<str>>(&self, crates: impl Iterator<Item = T>) -> Result<()> {
+        for crate_name in crates {
+            self.managed_crate_for(crate_name.as_ref())?.fix_licenses()?;
         }
-
         Ok(())
     }
-    pub fn fix_metadata(&self) -> Result<()> {
-        let mut cc = self.new_cc();
-        cc.add_from(self.managed_dir().rel())?;
-
-        for krate in cc.map_field().values() {
-            println!("{} = \"={}\"", krate.name(), krate.version());
-            let mut metadata = GoogleMetadata::try_from(krate.path().join("METADATA")?)?;
-            metadata.set_version_and_urls(krate.name(), krate.version().to_string())?;
-            metadata.migrate_archive();
-            metadata.migrate_homepage();
-            metadata.remove_deprecated_url();
-            metadata.write()?;
+    pub fn fix_metadata<T: AsRef<str>>(&self, crates: impl Iterator<Item = T>) -> Result<()> {
+        for crate_name in crates {
+            self.managed_crate_for(crate_name.as_ref())?.fix_metadata()?;
         }
-
         Ok(())
     }
     pub fn recontextualize_patches<T: AsRef<str>>(
@@ -620,10 +607,16 @@ impl ManagedRepo {
         ))?;
         let base_deps = base_version.android_version_reqs_by_name();
 
-        for version in cio_crate.versions_gt(krate.android_version()) {
+        let mut newer_versions = cio_crate.versions_gt(krate.android_version()).peekable();
+        if newer_versions.peek().is_none() {
+            println!("There are no newer versions of this crate.");
+        }
+        for version in newer_versions {
             println!("Version {}", version.version());
+            let mut found_problems = false;
             let parsed_version = semver::Version::parse(version.version())?;
             if !krate.android_version().is_upgradable_to(&parsed_version) {
+                found_problems = true;
                 if !krate.android_version().is_upgradable_to_relaxed(&parsed_version) {
                     println!("  Not semver-compatible, even by relaxed standards");
                 } else {
@@ -642,6 +635,7 @@ impl ManagedRepo {
                     &legacy_crates
                 };
                 if !cc.contains_name(dep.crate_name()) {
+                    found_problems = true;
                     println!(
                         "  Dep {} {} has not been imported to Android",
                         dep.crate_name(),
@@ -655,6 +649,7 @@ impl ManagedRepo {
                 }
                 for (_, dep_crate) in cc.get_versions(dep.crate_name()) {
                     if !req.matches_relaxed(dep_crate.version()) {
+                        found_problems = true;
                         println!(
                             "  Dep {} {} is not satisfied by v{} at {}",
                             dep.crate_name(),
@@ -667,6 +662,9 @@ impl ManagedRepo {
                         }
                     }
                 }
+            }
+            if !found_problems {
+                println!("  No problems found with this version.")
             }
         }
 
@@ -785,6 +783,16 @@ impl ManagedRepo {
             }
             println!("Update {} to {} succeeded", crate_name, version);
         }
+        Ok(())
+    }
+    pub fn init(&self) -> Result<()> {
+        if self.path.abs().exists() {
+            return Err(anyhow!("{} already exists", self.path));
+        }
+        create_dir_all(&self.path).context(format!("Failed to create {}", self.path))?;
+        let crates_dir = self.path.join("crates")?;
+        create_dir_all(&crates_dir).context(format!("Failed to create {}", crates_dir))?;
+        self.pseudo_crate().init()?;
         Ok(())
     }
 }
