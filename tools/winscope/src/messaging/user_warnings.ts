@@ -236,6 +236,20 @@ export class ProxyTraceTimeout extends UserWarning {
   }
 }
 
+export class ProxyTracingWarnings extends UserWarning {
+  constructor(private readonly warnings: string[]) {
+    super();
+  }
+
+  getDescriptor(): string {
+    return 'proxy tracing warnings';
+  }
+
+  getMessage(): string {
+    return `Trace collection warning: ${this.warnings.join(', ')}`;
+  }
+}
+
 export class ProxyTracingErrors extends UserWarning {
   constructor(private readonly errorMessages: string[]) {
     super();
@@ -246,7 +260,7 @@ export class ProxyTracingErrors extends UserWarning {
   }
 
   getMessage(): string {
-    return `Errors occurred during tracing: ${this.errorMessages.join(', ')}`;
+    return `Trace collection errors: ${this.errorMessages.join(', ')}`;
   }
 }
 
@@ -292,5 +306,19 @@ export class CannotParseAllTransitions extends UserWarning {
 
   getMessage(): string {
     return 'Cannot parse all transitions. Some may be missing in Transitions viewer.';
+  }
+}
+
+export class TraceSearchQueryFailed extends UserWarning {
+  constructor(private readonly errorMessage: string) {
+    super();
+  }
+
+  getDescriptor(): string {
+    return 'trace search query failed';
+  }
+
+  getMessage(): string {
+    return `Search query failed: ${this.errorMessage}`;
   }
 }
