@@ -40,7 +40,7 @@ describe('TraceSearchInitializer', () => {
     const trace = Trace.fromParser(parser);
     traces.addTrace(trace);
     const views = await TraceSearchInitializer.createSearchViews(traces);
-    expect(views).toEqual(['sf_layer_search', 'sf_entry_search']);
+    expect(views).toEqual(['sf_layer_search', 'sf_hierarchy_root_search']);
     const queryResult = await UnitTestUtils.runQueryAndGetResult(`
       SELECT * FROM sf_layer_search
         WHERE layer_name LIKE 'Task%'
@@ -50,7 +50,7 @@ describe('TraceSearchInitializer', () => {
     expect(queryResult.numRows()).toEqual(2);
 
     const queryResultEntry = await UnitTestUtils.runQueryAndGetResult(`
-      SELECT * FROM sf_entry_search
+      SELECT * FROM sf_hierarchy_root_search
         WHERE property LIKE 'displays[1]%'
         AND (
           flat_property='displays.layer_stack'
@@ -58,5 +58,29 @@ describe('TraceSearchInitializer', () => {
         )
     `);
     expect(queryResultEntry.numRows()).toEqual(40);
+  });
+
+  it('initializes transactions', async () => {
+    const parser = await UnitTestUtils.getPerfettoParser(
+      TraceType.TRANSACTIONS,
+      'traces/perfetto/transactions_trace.perfetto-trace',
+    );
+    const trace = Trace.fromParser(parser);
+    traces.addTrace(trace);
+    const views = await TraceSearchInitializer.createSearchViews(traces);
+    expect(views).toEqual(['transactions_search']);
+    const queryResultTransaction = await UnitTestUtils.runQueryAndGetResult(`
+      SELECT * FROM transactions_search
+        WHERE flat_property='transactions.layer_changes.x'
+        AND value!='0.0'
+    `);
+    expect(queryResultTransaction.numRows()).toEqual(3);
+
+    const queryResultAddedLayer = await UnitTestUtils.runQueryAndGetResult(`
+      SELECT * FROM transactions_search
+        WHERE flat_property='added_layers.name'
+        AND value='ImeContainer'
+    `);
+    expect(queryResultAddedLayer.numRows()).toEqual(1);
   });
 });
