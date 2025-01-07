@@ -27,7 +27,7 @@ import {FormControl, ValidationErrors, Validators} from '@angular/forms';
 import {overlayPanelStyles} from 'app/styles/overlay_panel.styles';
 import {assertDefined} from 'common/assert_utils';
 import {FunctionUtils} from 'common/function_utils';
-import {Store} from 'common/store';
+import {Store} from 'common/store/store';
 import {Analytics} from 'logging/analytics';
 import {
   FilterPresetApplyRequest,
@@ -328,7 +328,11 @@ export class TraceViewComponent
   }
 
   getTabTooltip(view: View): string {
-    return view.traces.flatMap((trace) => trace.getDescriptors()).join(', ');
+    const desc = new Set();
+    view.traces.forEach((trace) =>
+      trace.getDescriptors().forEach((d) => desc.add(d)),
+    );
+    return Array.from(desc).join(', ');
   }
 
   getTitle(view: View): string {

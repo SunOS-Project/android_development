@@ -15,8 +15,8 @@
  */
 
 import {assertDefined} from 'common/assert_utils';
-import {Timestamp} from 'common/time';
-import {ParserTimestampConverter} from 'common/timestamp_converter';
+import {Timestamp} from 'common/time/time';
+import {ParserTimestampConverter} from 'common/time/timestamp_converter';
 import {AddDefaults} from 'parsers/operations/add_defaults';
 import {SetFormatters} from 'parsers/operations/set_formatters';
 import {TranslateIntDef} from 'parsers/operations/translate_intdef';
@@ -147,7 +147,7 @@ export class ParserViewCaptureWindow implements Parser<HierarchyTreeNode> {
   }
 
   getDescriptors(): string[] {
-    return this.descriptors;
+    return [this.windowName, ...this.descriptors];
   }
 
   private decodeTimestamps(): Timestamp[] {

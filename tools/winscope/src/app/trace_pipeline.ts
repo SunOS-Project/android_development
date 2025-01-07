@@ -19,7 +19,7 @@ import {OnProgressUpdateType} from 'common/function_utils';
 import {
   TimestampConverter,
   UTC_TIMEZONE_INFO,
-} from 'common/timestamp_converter';
+} from 'common/time/timestamp_converter';
 import {UserNotifier} from 'common/user_notifier';
 import {Analytics} from 'logging/analytics';
 import {ProgressListener} from 'messaging/progress_listener';
@@ -216,6 +216,7 @@ export class TracePipeline {
     const legacyParsers = await new LegacyParserFactory().createParsers(
       filterResult.legacy,
       this.timestampConverter,
+      filterResult.metadata,
       progressListener,
     );
 

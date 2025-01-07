@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 import {assertDefined} from 'common/assert_utils';
+import {
+  TimestampConverterUtils,
+  timestampEqualityTester,
+} from 'common/time/test_utils';
 import {DuplicateLayerIds} from 'messaging/user_warnings';
-import {TimestampConverterUtils} from 'test/unit/timestamp_converter_utils';
 import {TraceBuilder} from 'test/unit/trace_builder';
 import {UserNotifierChecker} from 'test/unit/user_notifier_checker';
 import {UnitTestUtils} from 'test/unit/utils';
@@ -34,12 +37,17 @@ describe('ParserSurfaceFlinger', () => {
     userNotifierChecker = new UserNotifierChecker();
   });
 
+  afterEach(() => {
+    userNotifierChecker.expectNone();
+    userNotifierChecker.reset();
+  });
+
   describe('trace with real timestamps', () => {
     let parser: Parser<HierarchyTreeNode>;
     let trace: Trace<HierarchyTreeNode>;
 
     beforeAll(async () => {
-      jasmine.addCustomEqualityTester(UnitTestUtils.timestampEqualityTester);
+      jasmine.addCustomEqualityTester(timestampEqualityTester);
       parser = (await UnitTestUtils.getParser(
         'traces/elapsed_and_real_timestamp/SurfaceFlinger.pb',
       )) as Parser<HierarchyTreeNode>;

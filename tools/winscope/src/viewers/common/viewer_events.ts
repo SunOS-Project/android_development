@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {Timestamp} from 'common/time';
+import {Timestamp} from 'common/time/time';
 import {TraceEntry} from 'trace/trace';
 import {TextFilter} from 'viewers/common/text_filter';
 import {Search} from 'viewers/viewer_search/ui_data';
@@ -47,8 +47,8 @@ export enum ViewerEvents {
   ArrowDownPress = 'ArrowDownPress',
   ArrowUpPress = 'ArrowUpPress',
 
+  GlobalSearchSectionClick = 'GlobalSearchSectionClick',
   SearchQueryClick = 'SearchQueryClick',
-  ResetQueryClick = 'ResetQueryClick',
   SaveQueryClick = 'SaveQueryClick',
   DeleteSavedQueryClick = 'DeleteSavedQueryClick',
 }

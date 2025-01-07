@@ -27,8 +27,8 @@ import {
 import {MatDialog} from '@angular/material/dialog';
 import {assertDefined} from 'common/assert_utils';
 import {FunctionUtils} from 'common/function_utils';
-import {PersistentStoreProxy} from 'common/persistent_store_proxy';
-import {Store} from 'common/store';
+import {PersistentStoreProxy} from 'common/store/persistent_store_proxy';
+import {Store} from 'common/store/store';
 import {UserNotifier} from 'common/user_notifier';
 import {Analytics} from 'logging/analytics';
 import {ProgressListener} from 'messaging/progress_listener';
@@ -52,7 +52,7 @@ import {
   EnableConfiguration,
   makeDefaultDumpConfigMap,
   makeDefaultTraceConfigMap,
-  makeScreenRecordingConfigs,
+  makeScreenRecordingSelectionConfigs,
   SelectionConfiguration,
   TraceConfigurationMap,
 } from 'trace_collection/trace_configuration';
@@ -901,18 +901,14 @@ export class CollectTracesComponent
       selectedDevice.multiDisplayScreenRecordingAvailable &&
       !Array.isArray(displays.value)
     ) {
-      screenRecordingConfig.selectionConfigs = makeScreenRecordingConfigs(
-        selectedDevice.displays,
-        [],
-      );
+      screenRecordingConfig.selectionConfigs =
+        makeScreenRecordingSelectionConfigs(selectedDevice.displays, []);
     } else if (
       !selectedDevice.multiDisplayScreenRecordingAvailable &&
       Array.isArray(displays.value)
     ) {
-      screenRecordingConfig.selectionConfigs = makeScreenRecordingConfigs(
-        selectedDevice.displays,
-        '',
-      );
+      screenRecordingConfig.selectionConfigs =
+        makeScreenRecordingSelectionConfigs(selectedDevice.displays, '');
     } else {
       screenRecordingConfig.selectionConfigs[0].options =
         selectedDevice.displays;
