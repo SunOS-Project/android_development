@@ -456,10 +456,11 @@ fun SystemUi(
                 LocalContentColor provides MaterialTheme.colorScheme.onSurface
             ) {
                 var isMediaPlayerPlaying by remember { mutableStateOf(false) }
-                val mediaPlayer: (@Composable SceneScope.() -> Unit)? =
+                val mediaPlayer: (@Composable SceneScope.(isSmall: Boolean) -> Unit)? =
                     if (configuration.showMediaPlayer) {
-                        {
+                        { isSmall ->
                             MediaPlayer(
+                                isSmall = isSmall,
                                 isPlaying = isMediaPlayerPlaying,
                                 onIsPlayingChange = { isMediaPlayerPlaying = it },
                             )
@@ -467,6 +468,10 @@ fun SystemUi(
                     } else {
                         null
                     }
+                val largeMediaPlayer: (@Composable SceneScope.() -> Unit)? =
+                    mediaPlayer?.let { { it(/* isSmall= */ false) } }
+                val smallMediaPlayer: (@Composable SceneScope.() -> Unit)? =
+                    mediaPlayer?.let { { it(/* isSmall= */ true) } }
 
                 val qsPager: (@Composable SceneScope.() -> Unit) = {
                     QuickSettingsPager(
@@ -525,7 +530,7 @@ fun SystemUi(
                                             configuration.notificationsInLockscreen
                                     )
                                 },
-                                mediaPlayer,
+                                mediaPlayer = largeMediaPlayer,
                                 isDismissable = isLockscreenDismissable,
                                 onToggleDismissable = {
                                     isLockscreenDismissable = !isLockscreenDismissable
@@ -548,12 +553,13 @@ fun SystemUi(
                                             configuration.notificationsInLockscreen
                                     )
                                 },
-                                mediaPlayer,
+                                mediaPlayer = largeMediaPlayer,
                                 isDismissable = isLockscreenDismissable,
                                 onToggleDismissable = {
                                     isLockscreenDismissable = !isLockscreenDismissable
                                 },
                                 ::onChangeScene,
+                                configuration = configuration,
                             )
                         }
                         scene(Scenes.StubStart, Stub.startUserActions(lockscreenScene)) {
@@ -587,7 +593,7 @@ fun SystemUi(
                         ) {
                             QuickSettings(
                                 qsPager,
-                                mediaPlayer,
+                                mediaPlayer = largeMediaPlayer,
                                 ::onSettingsButtonClicked,
                                 ::onPowerButtonClicked,
                             )
@@ -603,7 +609,7 @@ fun SystemUi(
                                         overscrollEffect = overscrollEffect,
                                     )
                                 },
-                                mediaPlayer,
+                                mediaPlayer = largeMediaPlayer,
                                 quickSettingsTiles,
                                 nQuickSettingsColumns,
                             )
@@ -618,7 +624,7 @@ fun SystemUi(
                                         maxNotificationCount = configuration.notificationsInShade
                                     )
                                 },
-                                mediaPlayer,
+                                mediaPlayer = largeMediaPlayer,
                                 quickSettingsTiles,
                                 nQuickSettingsSplitShadeRows,
                                 nQuickSettingsColumns,
@@ -636,21 +642,22 @@ fun SystemUi(
                             userActions = QuickSettingsShade.UserActions,
                             alignment = Alignment.TopEnd,
                         ) {
-                            QuickSettingsShade(qsPager, mediaPlayer)
+                            QuickSettingsShade(qsPager, smallMediaPlayer)
                         }
 
                         overlay(
                             Overlays.Notifications,
                             userActions = NotificationShade.UserActions,
-                            alignment = Alignment.TopEnd,
+                            alignment = Alignment.TopStart,
                         ) {
                             NotificationShade(
+                                mediaPlayer = largeMediaPlayer,
                                 notificationList = {
                                     NotificationList(
                                         maxNotificationCount = configuration.notificationsInShade,
                                         isScrollable = false,
                                     )
-                                }
+                                },
                             )
                         }
                     }
