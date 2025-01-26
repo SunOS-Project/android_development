@@ -102,12 +102,11 @@ function isObject(item: any): boolean {
 }
 
 /**
- * Merge sources into the target keeping the structure of the target.
+ * Merge sources into the target keeping the structure of the target. Arrays are replaced.
  * @param target the object we mutate by merging the data from source into, but keep the object structure of
  * @param source the object we merge into target
- * @return the mutated target object
  */
-function mergeDeepKeepingStructure(target: any, source: any): any {
+function mergeDeepKeepingStructure(target: any, source: any) {
   if (isObject(target) && isObject(source)) {
     for (const key in target) {
       if (source[key] === undefined) {
@@ -125,11 +124,9 @@ function mergeDeepKeepingStructure(target: any, source: any): any {
       }
     }
   }
-
-  return target;
 }
 
-function mergeDeep(target: any, ...sources: any): any {
+function mergeDeep(target: any, ...sources: any): object {
   if (!sources.length) return target;
   const source = sources.shift();
 
