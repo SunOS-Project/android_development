@@ -429,12 +429,6 @@ export class TraceViewComponent
         };
       });
 
-    this.tabs.forEach((tab) => {
-      // TODO: setting "store" this way is a hack.
-      //       Store should be part of View's interface.
-      (tab.view.htmlElement as any).store = this.store;
-    });
-
     if (this.tabs.length > 0) {
       const tabToShow = assertDefined(
         this.tabs.find((tab) => tab.view.type !== ViewType.GLOBAL_SEARCH),

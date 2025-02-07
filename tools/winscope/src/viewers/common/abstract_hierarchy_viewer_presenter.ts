@@ -16,6 +16,7 @@
 
 import {assertDefined} from 'common/assert_utils';
 import {FunctionUtils} from 'common/function_utils';
+import {InMemoryStorage} from 'common/store/in_memory_storage';
 import {parseMap, stringifyMap} from 'common/store/persistent_store_proxy';
 import {Store} from 'common/store/store';
 import {
@@ -23,10 +24,7 @@ import {
   WinscopeEvent,
   WinscopeEventType,
 } from 'messaging/winscope_event';
-import {
-  EmitEvent,
-  WinscopeEventEmitter,
-} from 'messaging/winscope_event_emitter';
+import {EmitEvent} from 'messaging/winscope_event_emitter';
 import {Trace, TraceEntry} from 'trace/trace';
 import {Traces} from 'trace/traces';
 import {TraceEntryFinder} from 'trace/trace_entry_finder';
@@ -38,7 +36,7 @@ import {RectsPresenter} from 'viewers/common/rects_presenter';
 import {TextFilter} from 'viewers/common/text_filter';
 import {UiHierarchyTreeNode} from 'viewers/common/ui_hierarchy_tree_node';
 import {UserOptions} from 'viewers/common/user_options';
-import {HierarchyPresenter} from './hierarchy_presenter';
+import {HierarchyPresenter, SelectedTree} from './hierarchy_presenter';
 import {PresetHierarchy, TextFilterValues} from './preset_hierarchy';
 import {RectShowState} from './rect_show_state';
 import {UiDataHierarchy} from './ui_data_hierarchy';
@@ -48,8 +46,7 @@ export type NotifyHierarchyViewCallbackType<UiData> = (uiData: UiData) => void;
 
 export abstract class AbstractHierarchyViewerPresenter<
   UiData extends UiDataHierarchy,
-> implements WinscopeEventEmitter
-{
+> {
   protected emitWinscopeEvent: EmitEvent = FunctionUtils.DO_NOTHING_ASYNC;
   protected overridePropertiesTree: PropertyTreeNode | undefined;
   protected overridePropertiesTreeName: string | undefined;
@@ -82,6 +79,16 @@ export abstract class AbstractHierarchyViewerPresenter<
       ViewerEvents.HighlightedIdChange,
       async (event) =>
         await this.onHighlightedIdChange((event as CustomEvent).detail.id),
+    );
+    htmlElement.addEventListener(
+      ViewerEvents.ArrowDownPress,
+      async (event) =>
+        await this.onArrowPress((event as CustomEvent).detail, false),
+    );
+    htmlElement.addEventListener(
+      ViewerEvents.ArrowUpPress,
+      async (event) =>
+        await this.onArrowPress((event as CustomEvent).detail, true),
     );
     htmlElement.addEventListener(
       ViewerEvents.HighlightedPropertyChange,
@@ -138,12 +145,23 @@ export abstract class AbstractHierarchyViewerPresenter<
         );
       },
     );
+    this.addViewerSpecificListeners(htmlElement);
   }
 
   onPinnedItemChange(pinnedItem: UiHierarchyTreeNode) {
     this.hierarchyPresenter.applyPinnedItemChange(pinnedItem);
     this.uiData.pinnedItems = this.hierarchyPresenter.getPinnedItems();
     this.copyUiDataAndNotifyView();
+  }
+
+  async onArrowPress(storage: InMemoryStorage, getPrevious: boolean) {
+    const newNode = this.hierarchyPresenter.getAdjacentVisibleNode(
+      storage,
+      getPrevious,
+    );
+    if (newNode) {
+      await this.onHighlightedNodeChange(newNode);
+    }
   }
 
   onHighlightedPropertyChange(id: string) {
@@ -238,6 +256,15 @@ export abstract class AbstractHierarchyViewerPresenter<
         this.refreshUIData();
       },
     );
+    await this.onViewerSpecificWinscopeEvent(event);
+  }
+
+  protected async onViewerSpecificWinscopeEvent(event: WinscopeEvent) {
+    // do nothing
+  }
+
+  protected addViewerSpecificListeners(htmlElement: HTMLElement) {
+    // do nothing;
   }
 
   protected saveConfigAsPreset(storeKey: string) {
@@ -366,7 +393,7 @@ export abstract class AbstractHierarchyViewerPresenter<
     }
     const selected = this.hierarchyPresenter.getSelectedTree();
     if (selected) {
-      const [trace, selectedTree] = selected;
+      const {trace, tree: selectedTree} = selected;
       const propertiesTree = await selectedTree.getAllProperties();
       if (
         this.propertiesPresenter.getUserOptions()['showDiff']?.enabled &&
@@ -446,7 +473,7 @@ export abstract class AbstractHierarchyViewerPresenter<
   abstract onHighlightedIdChange(id: string): Promise<void>;
   protected abstract keepCalculated(tree: HierarchyTreeNode): boolean;
   protected abstract getOverrideDisplayName(
-    selected: [Trace<HierarchyTreeNode>, HierarchyTreeNode],
+    selected: SelectedTree,
   ): string | undefined;
   protected abstract refreshUIData(): void;
   protected initializeIfNeeded?(event: TracePositionUpdate): Promise<void>;

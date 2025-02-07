@@ -18,6 +18,7 @@ import {PersistentStoreProxy} from 'common/store/persistent_store_proxy';
 import {Store} from 'common/store/store';
 import {Trace} from 'trace/trace';
 import {Traces} from 'trace/traces';
+import {TRACE_INFO} from 'trace/trace_info';
 import {TraceType} from 'trace/trace_type';
 import {HierarchyTreeNode} from 'trace/tree_node/hierarchy_tree_node';
 import {
@@ -26,13 +27,20 @@ import {
 } from 'viewers/common/abstract_hierarchy_viewer_presenter';
 import {VISIBLE_CHIP} from 'viewers/common/chip';
 import {DisplayIdentifier} from 'viewers/common/display_identifier';
-import {HierarchyPresenter} from 'viewers/common/hierarchy_presenter';
+import {
+  HierarchyPresenter,
+  SelectedTree,
+} from 'viewers/common/hierarchy_presenter';
 import {PropertiesPresenter} from 'viewers/common/properties_presenter';
 import {RectsPresenter} from 'viewers/common/rects_presenter';
 import {TextFilter} from 'viewers/common/text_filter';
 import {UiHierarchyTreeNode} from 'viewers/common/ui_hierarchy_tree_node';
 import {UI_RECT_FACTORY} from 'viewers/common/ui_rect_factory';
 import {UserOptions} from 'viewers/common/user_options';
+import {
+  RectLegendFactory,
+  TraceRectType,
+} from 'viewers/components/rects/rect_spec';
 import {UiRect} from 'viewers/components/rects/ui_rect';
 import {UpdateDisplayNames} from './operations/update_display_names';
 import {UiData} from './ui_data';
@@ -128,7 +136,13 @@ the default for its data type.`,
     storage: Readonly<Store>,
     notifyViewCallback: NotifyHierarchyViewCallbackType<UiData>,
   ) {
-    super(trace, traces, storage, notifyViewCallback, new UiData());
+    const uiData = new UiData();
+    uiData.rectSpec = {
+      type: TraceRectType.WINDOW_STATES,
+      icon: TRACE_INFO[TraceType.WINDOW_MANAGER].icon,
+      legend: RectLegendFactory.makeLegendForWindowStateRects(),
+    };
+    super(trace, traces, storage, notifyViewCallback, uiData);
   }
 
   override async onHighlightedNodeChange(item: UiHierarchyTreeNode) {
@@ -142,13 +156,13 @@ the default for its data type.`,
   }
 
   protected override getOverrideDisplayName(
-    selected: [Trace<HierarchyTreeNode>, HierarchyTreeNode],
+    selected: SelectedTree,
   ): string | undefined {
-    if (!selected[1].isRoot()) {
+    if (!selected.tree.isRoot()) {
       return undefined;
     }
     return this.hierarchyPresenter
-      .getCurrentHierarchyTreeNames(selected[0])
+      .getCurrentHierarchyTreeNames(selected.trace)
       ?.at(0);
   }
 

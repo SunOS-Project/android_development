@@ -249,7 +249,7 @@ export class Trace<T> {
 
   getFrame(frame: AbsoluteFrameIndex): Trace<T> {
     this.checkTraceCanBeAccessedInFrameDomain();
-    const entries = this.frameMap!.getEntriesRange({
+    const entries = assertDefined(this.frameMap).getEntriesRange({
       start: frame,
       end: frame + 1,
     });
@@ -508,9 +508,10 @@ export class Trace<T> {
         }
         i++;
       }
-      const firstDate = TimestampUtils.extractDateFromHumanTimestamp(
-        assertDefined(firstTs),
-      );
+      if (!firstTs) {
+        return false;
+      }
+      const firstDate = TimestampUtils.extractDateFromHumanTimestamp(firstTs);
       if (firstDate) {
         const lastDate = TimestampUtils.extractDateFromHumanTimestamp(
           this.getEntry(this.lengthEntries - 1)

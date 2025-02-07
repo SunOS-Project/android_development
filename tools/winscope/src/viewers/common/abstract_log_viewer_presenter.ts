@@ -22,10 +22,7 @@ import {
   WinscopeEvent,
   WinscopeEventType,
 } from 'messaging/winscope_event';
-import {
-  EmitEvent,
-  WinscopeEventEmitter,
-} from 'messaging/winscope_event_emitter';
+import {EmitEvent} from 'messaging/winscope_event_emitter';
 import {Trace, TraceEntry} from 'trace/trace';
 import {TraceEntryFinder} from 'trace/trace_entry_finder';
 import {TracePosition} from 'trace/trace_position';
@@ -47,8 +44,7 @@ export type NotifyLogViewCallbackType<UiData> = (uiData: UiData) => void;
 export abstract class AbstractLogViewerPresenter<
   UiData extends UiDataLog,
   TraceEntryType extends object,
-> implements WinscopeEventEmitter
-{
+> {
   protected static readonly VALUE_NA = 'N/A';
   protected emitAppEvent: EmitEvent = FunctionUtils.DO_NOTHING_ASYNC;
   protected abstract logPresenter: LogPresenter<LogEntry>;
@@ -125,8 +121,11 @@ export abstract class AbstractLogViewerPresenter<
       if (!isViewerVisible || !isPositionChange) {
         return;
       }
+      event.preventDefault();
       await this.onPositionChangeByKeyPress(event);
     });
+
+    this.addViewerSpecificListeners(htmlElement);
   }
 
   async onAppEvent(event: WinscopeEvent) {
@@ -240,17 +239,26 @@ export abstract class AbstractLogViewerPresenter<
       } else {
         event.stopImmediatePropagation();
         if (currIndex > 0) {
-          return this.emitAppEvent(
-            new TracePositionUpdate(
-              TracePosition.fromTraceEntry(
-                this.uiData.entries[currIndex - 1].traceEntry,
-              ),
-              true,
-            ),
-          );
+          let prev = currIndex - 1;
+          while (prev >= 0) {
+            const prevEntry = this.uiData.entries[prev].traceEntry;
+            if (prevEntry.hasValidTimestamp()) {
+              return this.emitAppEvent(
+                new TracePositionUpdate(
+                  TracePosition.fromTraceEntry(prevEntry),
+                  true,
+                ),
+              );
+            }
+            prev--;
+          }
         }
       }
     }
+  }
+
+  protected addViewerSpecificListeners(htmlElement: HTMLElement) {
+    // do nothing
   }
 
   protected refreshUiData() {
