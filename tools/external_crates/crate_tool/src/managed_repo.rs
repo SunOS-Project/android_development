@@ -29,10 +29,10 @@ use glob::glob;
 use google_metadata::GoogleMetadata;
 use itertools::Itertools;
 use license_checker::find_licenses;
-use name_and_version::{NameAndVersionMap, NameAndVersionRef, NamedAndVersioned};
+use name_and_version::{NameAndVersion, NameAndVersionMap, NameAndVersionRef, NamedAndVersioned};
 use repo_config::RepoConfig;
 use rooted_path::RootedPath;
-use semver::Version;
+use semver::{Version, VersionReq};
 use serde::Serialize;
 use spdx::Licensee;
 
@@ -106,7 +106,6 @@ impl ManagedRepo {
                 let cc = self.legacy_crates_for(crate_name)?;
                 let nv = NameAndVersionRef::new(crate_name, v);
                 Ok(cc
-                    .map_field()
                     .get(&nv as &dyn NamedAndVersioned)
                     .ok_or(anyhow!("Failed to find crate {} v{}", crate_name, v))?
                     .path()
@@ -165,7 +164,7 @@ impl ManagedRepo {
         let krate = match version {
             Some(v) => {
                 let nv = NameAndVersionRef::new(crate_name, v);
-                match cc.map_field().get(&nv as &dyn NamedAndVersioned) {
+                match cc.get(&nv as &dyn NamedAndVersioned) {
                     Some(k) => k,
                     None => {
                         return Err(anyhow!("Did not find crate {} v{}", crate_name, v));
@@ -173,7 +172,7 @@ impl ManagedRepo {
                 }
             }
             None => {
-                if cc.map_field().len() != 1 {
+                if cc.len() != 1 {
                     return Err(anyhow!(
                         "Expected a single crate version for {}, but found {}. Specify a version with --versions={}=<version>",
                         crate_name,
@@ -181,7 +180,7 @@ impl ManagedRepo {
                         crate_name
                     ));
                 }
-                cc.map_field().values().next().unwrap()
+                cc.values().next().unwrap()
             }
         };
         println!("Found {} v{} in {}", krate.name(), krate.version(), krate.path());
@@ -428,12 +427,12 @@ impl ManagedRepo {
             let mut found_problems = false;
             for (dep, req) in version.android_deps_with_version_reqs() {
                 println!("Found dep {}", dep.crate_name());
-                let cc = if managed_crates.contains_name(dep.crate_name()) {
+                let cc = if managed_crates.contains_crate(dep.crate_name()) {
                     &managed_crates
                 } else {
                     &legacy_crates
                 };
-                if !cc.contains_name(dep.crate_name()) {
+                if !cc.contains_crate(dep.crate_name()) {
                     found_problems = true;
                     println!(
                         "  Dep {} {} has not been imported to Android",
@@ -701,7 +700,7 @@ impl ManagedRepo {
         let mut cc = self.new_cc();
         cc.add_from(self.managed_dir().rel())?;
 
-        for krate in cc.map_field().values() {
+        for krate in cc.values() {
             let cio_crate = self.crates_io.get_crate(krate.name())?;
             let upgrades =
                 cio_crate.versions_gt(krate.version()).map(|v| v.version()).collect::<Vec<_>>();
@@ -776,12 +775,12 @@ impl ManagedRepo {
             // * If a dep is missing, but the same dep exists for the current version of the crate, it's probably not actually necessary.
             // * Use relaxed version requirements, treating 0.x and 0.y as compatible, even though they aren't according to semver rules.
             for (dep, req) in version.android_deps_with_version_reqs() {
-                let cc = if managed_crates.contains_name(dep.crate_name()) {
+                let cc = if managed_crates.contains_crate(dep.crate_name()) {
                     &managed_crates
                 } else {
                     &legacy_crates
                 };
-                if !cc.contains_name(dep.crate_name()) {
+                if !cc.contains_crate(dep.crate_name()) {
                     found_problems = true;
                     println!(
                         "  Dep {} {} has not been imported to Android",
@@ -831,7 +830,7 @@ impl ManagedRepo {
         managed_crates.add_from(self.managed_dir().rel())?;
         let legacy_crates = self.legacy_crates()?;
 
-        for krate in managed_crates.map_field().values() {
+        for krate in managed_crates.values() {
             let cio_crate = self.crates_io.get_crate(krate.name())?;
 
             let base_version = cio_crate.get_version(krate.version());
@@ -869,7 +868,7 @@ impl ManagedRepo {
                     if !dep.is_changed_dep(&base_deps) {
                         return false;
                     }
-                    let cc = if managed_crates.contains_name(dep.crate_name()) {
+                    let cc = if managed_crates.contains_crate(dep.crate_name()) {
                         &managed_crates
                     } else {
                         &legacy_crates
@@ -908,12 +907,55 @@ impl ManagedRepo {
         Ok(())
     }
     pub fn update(&self, crate_name: impl AsRef<str>, version: impl AsRef<str>) -> Result<()> {
-        let pseudo_crate = self.pseudo_crate();
+        let crate_name = crate_name.as_ref();
         let version = Version::parse(version.as_ref())?;
-        let nv = NameAndVersionRef::new(crate_name.as_ref(), &version);
-        pseudo_crate.remove(&crate_name)?;
-        pseudo_crate.cargo_add(&nv)?;
-        self.regenerate([&crate_name].iter(), true)?;
+
+        let pseudo_crate = self.pseudo_crate();
+        let managed_crate = self.managed_crate_for(crate_name)?;
+        let mut crate_updates = vec![NameAndVersion::new(crate_name.to_string(), version.clone())];
+
+        let cio_crate = self.crates_io.get_crate(crate_name)?;
+        let cio_crate_version = cio_crate
+            .get_version(&version)
+            .ok_or(anyhow!("Could not find {crate_name} {version} on crates.io"))?;
+
+        for dependent_crate_name in managed_crate.config().update_with() {
+            let dep = cio_crate_version
+                .dependencies()
+                .iter()
+                .find(|dep| dep.crate_name() == dependent_crate_name)
+                .ok_or(anyhow!(
+                    "Could not find crate {dependent_crate_name} as a dependency of {crate_name}"
+                ))?;
+            let req = VersionReq::parse(dep.requirement())?;
+            let dep_cio_crate = self.crates_io.get_crate(dependent_crate_name)?;
+            let version = dep_cio_crate
+                .safe_versions()
+                .find(|v| {
+                    if let Ok(parsed_version) = Version::parse(v.version()) {
+                        req.matches(&parsed_version)
+                    } else {
+                        false
+                    }
+                })
+                .ok_or(anyhow!(
+                    "Failed to find a version of {dependent_crate_name} that satisfies {}",
+                    dep.requirement()
+                ))?;
+            println!("Also updating {dependent_crate_name} to {}", version.version());
+            crate_updates.push(NameAndVersion::new(
+                dependent_crate_name.to_string(),
+                Version::parse(version.version())?,
+            ));
+        }
+
+        for nv in &crate_updates {
+            pseudo_crate.remove(nv.name())?;
+        }
+        for nv in &crate_updates {
+            pseudo_crate.cargo_add(nv)?;
+        }
+        self.regenerate(crate_updates.iter().map(|nv| nv.name()), true)?;
         Ok(())
     }
     pub fn init(&self) -> Result<()> {
