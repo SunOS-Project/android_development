@@ -170,7 +170,7 @@ export class Mediator {
           await this.uploadTracesComponent?.onWinscopeEvent(
             new AppTraceViewRequest(),
           );
-          await this.loadViewers();
+          await this.loadViewers(FilesSource.COLLECTED);
           await this.uploadTracesComponent?.onWinscopeEvent(
             new AppTraceViewRequestHandled(),
           );
@@ -196,7 +196,7 @@ export class Mediator {
     );
 
     await event.visit(WinscopeEventType.APP_TRACE_VIEW_REQUEST, async () => {
-      await this.loadViewers();
+      await this.loadViewers(FilesSource.UPLOADED);
       UserNotifier.notify();
     });
 
@@ -370,6 +370,7 @@ export class Mediator {
   private async propagateTracePosition(
     position: TracePosition | undefined,
     omitCrossToolProtocol: boolean,
+    source?: FilesSource,
   ) {
     if (!position) {
       return;
@@ -383,29 +384,55 @@ export class Mediator {
     const warnings: UserWarning[] = [];
 
     for (const viewer of viewers) {
+      const type = viewer.getTraces().at(0)?.type;
+      const traceType = type !== undefined ? TRACE_INFO[type].name : 'Unknown';
       try {
+        const startTimeMs = Date.now();
         await viewer.onWinscopeEvent(event);
+        if (source !== undefined) {
+          Analytics.Loading.logViewerInitializationTime(
+            traceType,
+            source,
+            Date.now() - startTimeMs,
+          );
+          Analytics.Memory.logUsage('viewer_initialized', {traceType});
+        }
+        Analytics.Navigation.logTimePropagated(
+          traceType,
+          Date.now() - startTimeMs,
+        );
       } catch (e) {
-        const traceType = assertDefined(viewer.getTraces().at(0)?.type);
+        console.error(e);
         warnings.push(
           new CannotVisualizeTraceEntry(
-            `Cannot parse entry for ${TRACE_INFO[traceType].name} trace: Trace may be corrupted.`,
+            `Cannot parse entry for ${traceType} trace: Trace may be corrupted.`,
           ),
         );
       }
     }
 
     if (this.timelineComponent) {
+      const startTimeMs = Date.now();
       await this.timelineComponent.onWinscopeEvent(event);
+      Analytics.Navigation.logTimePropagated(
+        'Timeline',
+        Date.now() - startTimeMs,
+      );
     }
 
     if (!omitCrossToolProtocol) {
+      const startTimeMs = Date.now();
       await this.crossToolProtocol.onWinscopeEvent(event);
+      Analytics.Navigation.logTimePropagated(
+        'CrossToolProtocol',
+        Date.now() - startTimeMs,
+      );
     }
 
     if (warnings.length > 0) {
       warnings.forEach((w) => UserNotifier.add(w));
     }
+    Analytics.Memory.logUsage('time_propagated');
   }
 
   private isViewerVisible(viewer: Viewer): boolean {
@@ -458,7 +485,7 @@ export class Mediator {
     UserNotifier.notify();
   }
 
-  private async loadViewers() {
+  private async loadViewers(source: FilesSource) {
     this.currentProgressListener?.onProgressUpdate(
       'Computing frame mapping...',
       undefined,
@@ -475,7 +502,10 @@ export class Mediator {
     }
 
     try {
+      const startTimeMs = Date.now();
       await this.tracePipeline.buildTraces();
+      Analytics.Loading.logFrameMapBuildTime(Date.now() - startTimeMs);
+      Analytics.Memory.logUsage('frame_map_built');
       this.currentProgressListener?.onOperationFinished(true);
     } catch (e) {
       UserNotifier.add(new IncompleteFrameMapping((e as Error).message));
@@ -521,7 +551,8 @@ export class Mediator {
     // Make sure all viewers are initialized and have performed the heavy pre-processing they need
     // at this stage, while the "initializing UI" progress message is still being displayed.
     // The viewers initialization is triggered by sending them a "trace position update".
-    await this.propagateTracePosition(initialPosition, true);
+    await this.propagateTracePosition(initialPosition, true, source);
+    Analytics.Memory.logUsage('viewers_initialized');
 
     this.focusedTabView = this.viewers
       .find((v) => v.getViews()[0].type === ViewType.TRACE_TAB)

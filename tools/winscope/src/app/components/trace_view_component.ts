@@ -462,11 +462,13 @@ export class TraceViewComponent
   }
 
   private async showTab(tab: Tab, firstToRender: boolean) {
+    const startTimeMs = Date.now();
     if (this.currentActiveTab) {
       this.currentActiveTab.view.htmlElement.style.display = 'none';
     }
 
-    if (!tab.addedToDom) {
+    const firstSwitch = !tab.addedToDom;
+    if (firstSwitch) {
       // Workaround for b/255966194:
       // make sure that the first time a tab content is rendered
       // (added to the DOM) it has style.display == "". This fixes the
@@ -484,8 +486,15 @@ export class TraceViewComponent
     this.currentActiveTab = tab;
 
     if (!firstToRender) {
-      Analytics.Navigation.logTabSwitched(tab.view.title);
       await this.emitAppEvent(new TabbedViewSwitched(tab.view));
+      Analytics.Navigation.logTabSwitched(
+        tab.view.title,
+        Date.now() - startTimeMs,
+        firstSwitch,
+      );
+    }
+    if (firstSwitch) {
+      Analytics.Memory.logUsage('tab_initialized', {firstSwitch});
     }
   }
 
