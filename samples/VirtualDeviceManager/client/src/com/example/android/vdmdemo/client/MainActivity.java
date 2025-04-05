@@ -16,8 +16,10 @@
 
 package com.example.android.vdmdemo.client;
 
+import android.bluetooth.BluetoothAdapter;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -35,10 +37,12 @@ import androidx.activity.result.contract.ActivityResultContracts.RequestPermissi
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
+import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.example.android.vdmdemo.common.ConnectionManager;
 import com.example.android.vdmdemo.common.DpadFragment;
+import com.example.android.vdmdemo.common.EdgeToEdgeUtils;
 import com.example.android.vdmdemo.common.NavTouchpadFragment;
 import com.example.android.vdmdemo.common.RemoteEventProto.DeviceCapabilities;
 import com.example.android.vdmdemo.common.RemoteEventProto.DeviceState;
@@ -74,6 +78,10 @@ public class MainActivity extends Hilt_MainActivity {
     private final Consumer<RemoteEvent> mRemoteEventConsumer = this::processRemoteEvent;
     private DisplayAdapter mDisplayAdapter;
     private InputMethodManager mInputMethodManager;
+
+    private final SharedPreferences.OnSharedPreferenceChangeListener mPreferenceChangeListener =
+            this::onPreferencesChanged;
+
     private final ActivityResultLauncher<String> mRequestPermissionLauncher =
             registerForActivityResult(new RequestPermission(), isGranted -> {
                 if (isGranted) {
@@ -93,13 +101,15 @@ public class MainActivity extends Hilt_MainActivity {
                     mRemoteIo.sendMessage(RemoteEvent.newBuilder()
                             .setDeviceCapabilities(DeviceCapabilities.newBuilder()
                                     .setDeviceName(Build.MODEL)
+                                    .setBluetoothDeviceName(
+                                            BluetoothAdapter.getDefaultAdapter().getName())
                                     .addAllSensorCapabilities(
                                             mSensorController.getSensorCapabilities())
                                     .addAllCameraCapabilities(
                                             mVirtualCameraController.getCameraCapabilities())
                                     .setSupportsAudioOutput(supportsAudioOutput)
-                                    .setSupportsAudioInput(supportsAudioInput)
-                            ).build());
+                                    .setSupportsAudioInput(supportsAudioInput))
+                            .build());
                 } else {
                     if (mDisplayAdapter != null) {
                         runOnUiThread(mDisplayAdapter::clearDisplays);
@@ -114,6 +124,7 @@ public class MainActivity extends Hilt_MainActivity {
         setContentView(R.layout.activity_main);
         Toolbar toolbar = requireViewById(R.id.main_tool_bar);
         setSupportActionBar(toolbar);
+        EdgeToEdgeUtils.applyTopInsets(toolbar);
 
         ClientView displaysView = requireViewById(R.id.displays);
         displaysView.setLayoutManager(
@@ -148,7 +159,12 @@ public class MainActivity extends Hilt_MainActivity {
                 mInputManager.sendInputEventToFocusedDisplay(
                         InputDeviceType.DEVICE_TYPE_ROTARY_ENCODER, event));
 
-        mConnectionManager.startClientSession();
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        sharedPreferences.registerOnSharedPreferenceChangeListener(mPreferenceChangeListener);
+
+        mConnectionManager.startClientSession(
+                sharedPreferences.getString(
+                        getString(R.string.pref_network_channel), String.valueOf(0)));
     }
 
     @Override
@@ -214,11 +230,21 @@ public class MainActivity extends Hilt_MainActivity {
         switch (item.getItemId()) {
             case R.id.input -> toggleInputVisibility();
             case R.id.power -> togglePowerState();
+            case R.id.settings -> startActivity(new Intent(this, SettingsActivity.class));
             default -> {
                 return super.onOptionsItemSelected(item);
             }
         }
         return true;
+    }
+
+    private void onPreferencesChanged(SharedPreferences sharedPreferences, String key) {
+        if (key.equals(getString(R.string.pref_network_channel))) {
+            mConnectionManager.disconnect();
+            mConnectionManager.startClientSession(
+                    sharedPreferences.getString(
+                            getString(R.string.pref_network_channel), String.valueOf(0)));
+        }
     }
 
     private void processRemoteEvent(RemoteEvent event) {
@@ -244,6 +270,11 @@ public class MainActivity extends Hilt_MainActivity {
             mPowerOn = event.getDeviceState().getPowerOn();
         } else if (event.hasBrightnessEvent()) {
             runOnUiThread(() -> setBrightness(event.getBrightnessEvent().getBrightness()));
+        } else if (event.hasRequestBluetoothDiscoverable()) {
+            if (BluetoothAdapter.getDefaultAdapter().getScanMode()
+                    != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
+                startActivity(new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE));
+            }
         }
     }
 

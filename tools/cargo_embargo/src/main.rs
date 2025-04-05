@@ -513,18 +513,11 @@ fn generate_cargo_out(cfg: &VariantConfig, intermediates_dir: &Path) -> Result<C
 
     let mut cargo_out = String::new();
     if cfg.run_cargo {
-        let envs = if cfg.extra_cfg.is_empty() {
-            vec![]
-        } else {
-            vec![(
-                "RUSTFLAGS",
-                cfg.extra_cfg
-                    .iter()
-                    .map(|cfg_flag| format!("--cfg {}", cfg_flag))
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            )]
-        };
+        let mut rustflags = vec!["--cap-lints".to_string(), "allow".to_string()];
+        if !cfg.extra_cfg.is_empty() {
+            rustflags.extend(cfg.extra_cfg.iter().map(|cfg_flag| format!("--cfg {}", cfg_flag)));
+        }
+        let envs = vec![("RUSTFLAGS", rustflags.join(" "))];
 
         // cargo build
         cargo_out += &run_cargo(
@@ -811,6 +804,7 @@ fn choose_licenses(license: &str) -> Result<Vec<&str>> {
         "MIT OR LGPL-3.0-or-later" => vec!["MIT"],
         "MIT/BSD-3-Clause" => vec!["MIT"],
         "MIT AND (MIT OR Apache-2.0)" => vec!["MIT"],
+        "0BSD OR MIT OR Apache-2.0" => vec!["Apache-2.0"],
 
         "LGPL-2.1-only OR BSD-2-Clause" => vec!["BSD-2-Clause"],
         _ => {
@@ -1145,14 +1139,11 @@ fn crate_to_bp_modules(
                 .clone()
                 .into_iter()
                 .filter(|crate_cfg| !cfg.cfg_blocklist.contains(crate_cfg))
+                .map(|crate_cfg| crate_cfg.replace(r#"""#, r#"\""#))
                 .collect(),
         );
 
-        let mut flags = Vec::new();
-        if !crate_.cap_lints.is_empty() {
-            flags.push(crate_.cap_lints.clone());
-        }
-        flags.extend(crate_.codegens.iter().map(|codegen| format!("-C {}", codegen)));
+        let flags = crate_.codegens.iter().map(|codegen| format!("-C {}", codegen)).collect();
         m.props.set_if_nonempty("flags", flags);
 
         let mut rust_libs = Vec::new();
@@ -1312,9 +1303,6 @@ fn crate_to_rulesmk(
     contents += &format!("MODULE_RUST_EDITION := {}\n", crate_.edition);
 
     let mut flags = Vec::new();
-    if !crate_.cap_lints.is_empty() {
-        flags.push(crate_.cap_lints.clone());
-    }
     flags.extend(crate_.codegens.iter().map(|codegen| format!("-C {}", codegen)));
     flags.extend(crate_.features.iter().map(|feat| format!("--cfg 'feature=\"{feat}\"'")));
     flags.extend(
@@ -1519,6 +1507,26 @@ mod tests {
                     raw_block: None
                 }
             }]
+        );
+    }
+
+    #[test]
+    fn escape_cfgs() {
+        let c = Crate {
+            name: "name".to_string(),
+            package_name: "package_name".to_string(),
+            edition: "2021".to_string(),
+            types: vec![CrateType::Lib],
+            cfgs: vec![r#"foo="bar""#.to_string()],
+            ..Default::default()
+        };
+        let cfg = VariantConfig { ..Default::default() };
+        let package_cfg = PackageVariantConfig { ..Default::default() };
+        let modules = crate_to_bp_modules(&c, &cfg, &package_cfg, &[]).unwrap();
+
+        assert_eq!(
+            modules[0].props.map.get("cfgs"),
+            Some(&BpValue::List(vec![BpValue::String(r#"foo=\"bar\""#.to_string())]))
         );
     }
 

@@ -146,7 +146,15 @@
         android:key="debug"
         android:title="Debug"
         app:iconSpaceReserved="false">
-    <!--
+
+        <SwitchPreferenceCompat
+            android:key="@string/pref_standalone_host_demo"
+            android:title="Single device demo"
+            android:summary="Show the virtual displays on the host instead of a client device"
+            android:defaultValue="false"
+            app:iconSpaceReserved="false" />
+
+        <!--
         When enabled, the encoder output of the host will be stored in:
         /sdcard/Download/vdmdemo_encoder_output_[displayId].h264
 
@@ -158,6 +166,15 @@
             android:title="Record encoder output"
             android:summary="Store the host's media encoder output to a local file"
             android:defaultValue="false"
+            app:iconSpaceReserved="false" />
+
+        <ListPreference
+            android:key="@string/pref_network_channel"
+            android:title="Network channel"
+            android:entries="@array/network_channels"
+            android:entryValues="@array/network_channels"
+            android:defaultValue="0"
+            app:useSimpleSummaryProvider="true"
             app:iconSpaceReserved="false" />
     </PreferenceCategory>
 

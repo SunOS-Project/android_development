@@ -78,6 +78,7 @@ import com.android.compose.animation.scene.UserActionResult
 import com.android.compose.animation.scene.ValueKey
 import com.android.compose.animation.scene.animateElementFloatAsState
 import com.android.compose.animation.scene.animateSceneFloatAsState
+import com.android.compose.gesture.NestedScrollableBound
 import com.android.compose.modifiers.thenIf
 import com.android.compose.nestedscroll.LargeTopAppBarNestedScrollConnection
 import com.android.compose.nestedscroll.PriorityNestedScrollConnection
@@ -213,24 +214,25 @@ private fun ContentScope.ShadeLayout(
                 {
                     val flingBehavior = ScrollableDefaults.flingBehavior()
                     Box(
-                        Modifier.nestedScroll(
-                            remember(
-                                scrimOffset,
-                                underScrimHeight,
-                                density,
-                                scrimMinTopPadding,
-                                flingBehavior,
-                            ) {
-                                scrimNestedScrollConnection(
-                                    scrimOffset = { scrimOffset.value },
-                                    onScrimOffsetChange = { scrimOffset.value = it },
-                                    underScrimHeight = { underScrimHeight.value },
-                                    density = density,
-                                    scrimMinTopPadding = scrimMinTopPadding,
-                                    flingBehavior = flingBehavior,
-                                )
-                            }
-                        )
+                        Modifier.disableSwipesWhenScrolling(NestedScrollableBound.BottomRight)
+                            .nestedScroll(
+                                remember(
+                                    scrimOffset,
+                                    underScrimHeight,
+                                    density,
+                                    scrimMinTopPadding,
+                                    flingBehavior,
+                                ) {
+                                    scrimNestedScrollConnection(
+                                        scrimOffset = { scrimOffset.value },
+                                        onScrimOffsetChange = { scrimOffset.value = it },
+                                        underScrimHeight = { underScrimHeight.value },
+                                        density = density,
+                                        scrimMinTopPadding = scrimMinTopPadding,
+                                        flingBehavior = flingBehavior,
+                                    )
+                                }
+                            )
                     ) {
                         scrim()
                     }
@@ -455,42 +457,47 @@ fun ContentScope.StatusBar(showDateAndTime: Boolean, modifier: Modifier = Modifi
 
 @Composable
 fun ContentScope.ShadeTime(scale: Float, modifier: Modifier = Modifier) {
-    Element(Shade.Elements.Time, modifier) {
-        val measurer = rememberTextMeasurer()
-        val color = LocalContentColor.current
-        val style = LocalTextStyle.current
+    ElementWithValues(Shade.Elements.Time, modifier) {
         val animatedScale by
             animateElementFloatAsState(scale, Shade.Values.TimeScale, canOverflow = false)
-        val layoutResult = remember(measurer, style) { measurer.measure("10:36", style = style) }
-        val layoutDirection = LocalLayoutDirection.current
 
-        Box {
-            Spacer(
-                Modifier.layout { measurable, _ ->
-                        // Layout this element with the *target* size/scale of the element in this
-                        // scene.
-                        val width = ceil(layoutResult.size.width * scale).roundToInt()
-                        val height = ceil(layoutResult.size.height * scale).roundToInt()
-                        measurable.measure(Constraints.fixed(width, height)).run {
-                            layout(width, height) { place(0, 0) }
-                        }
-                    }
-                    .drawBehind {
-                        val topLeft: Offset
-                        val pivot: Offset
-                        if (layoutDirection == LayoutDirection.Ltr) {
-                            topLeft = Offset.Zero
-                            pivot = Offset.Zero
-                        } else {
-                            topLeft = Offset(size.width - layoutResult.size.width, 0f)
-                            pivot = Offset(size.width, 0f)
-                        }
+        content {
+            val measurer = rememberTextMeasurer()
+            val color = LocalContentColor.current
+            val style = LocalTextStyle.current
+            val layoutResult =
+                remember(measurer, style) { measurer.measure("10:36", style = style) }
+            val layoutDirection = LocalLayoutDirection.current
 
-                        scale(animatedScale, pivot = pivot) {
-                            drawText(layoutResult, color = color, topLeft = topLeft)
+            Box {
+                Spacer(
+                    Modifier.layout { measurable, _ ->
+                            // Layout this element with the *target* size/scale of the element in
+                            // this
+                            // scene.
+                            val width = ceil(layoutResult.size.width * scale).roundToInt()
+                            val height = ceil(layoutResult.size.height * scale).roundToInt()
+                            measurable.measure(Constraints.fixed(width, height)).run {
+                                layout(width, height) { place(0, 0) }
+                            }
                         }
-                    }
-            )
+                        .drawBehind {
+                            val topLeft: Offset
+                            val pivot: Offset
+                            if (layoutDirection == LayoutDirection.Ltr) {
+                                topLeft = Offset.Zero
+                                pivot = Offset.Zero
+                            } else {
+                                topLeft = Offset(size.width - layoutResult.size.width, 0f)
+                                pivot = Offset(size.width, 0f)
+                            }
+
+                            scale(animatedScale, pivot = pivot) {
+                                drawText(layoutResult, color = color, topLeft = topLeft)
+                            }
+                        }
+                )
+            }
         }
     }
 }

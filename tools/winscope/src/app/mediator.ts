@@ -179,6 +179,7 @@ export class Mediator {
         }
       } else {
         UserNotifier.add(new NoValidFiles());
+        this.currentProgressListener?.onOperationFinished(false);
       }
       UserNotifier.notify();
     });
@@ -210,14 +211,14 @@ export class Mediator {
           'Downloading files...',
           undefined,
         );
-        console.log("App reset for remote tool download.");
+        console.log('App reset for remote tool download.');
       },
     );
 
     await event.visit(
       WinscopeEventType.REMOTE_TOOL_FILES_RECEIVED,
       async (event) => {
-        console.log("Remote tool files received.");
+        console.log('Remote tool files received.');
         await this.processRemoteFilesReceived(
           event.files,
           FilesSource.REMOTE_TOOL,
@@ -640,6 +641,8 @@ export class Mediator {
   }
 
   private findViewerByType(type: TraceType): Viewer | undefined {
-    return this.viewers.find((viewer) => viewer.getTraces()[0].type === type);
+    return this.viewers.find(
+      (viewer) => viewer.getTraces().at(0)?.type === type,
+    );
   }
 }

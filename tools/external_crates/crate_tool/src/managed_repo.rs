@@ -22,6 +22,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use crates_index::DependencyKind;
+use crates_io_util::CratesIoIndex;
 use google_metadata::GoogleMetadata;
 use itertools::Itertools;
 use license_checker::find_licenses;
@@ -36,7 +37,7 @@ use crate::{
     copy_dir,
     crate_collection::CrateCollection,
     crate_type::Crate,
-    crates_io::{AndroidDependencies, CratesIoIndex, DependencyChanges, SafeVersions},
+    crates_io::{AndroidDependencies, DependencyChanges, SafeVersions},
     license::{most_restrictive_type, update_module_license_files},
     managed_crate::ManagedCrate,
     pseudo_crate::{CargoVendorDirty, PseudoCrate},
@@ -166,11 +167,10 @@ impl ManagedRepo {
 
         let cio_crate = self.crates_io.get_crate(crate_name)?;
 
-        for version in cio_crate.versions() {
+        for version in cio_crate.safe_versions() {
             println!("Version {}", version.version());
             let mut found_problems = false;
             for (dep, req) in version.android_deps_with_version_reqs() {
-                println!("Found dep {}", dep.crate_name());
                 let cc = if managed_crates.contains_crate(dep.crate_name()) {
                     &managed_crates
                 } else {
@@ -284,7 +284,13 @@ impl ManagedRepo {
                 .success_or_error()
                 .context("Failed to generate cargo_embargo.json with 'cargo_embargo autoconfig'")?;
         } else {
-            write(krate.path().abs().join("cargo_embargo.json"), "{}")?;
+            write(
+                krate.path().abs().join("cargo_embargo.json"),
+                r#"{
+  "run_cargo": false,
+  "min_sdk_version": "29"
+}"#,
+            )?;
         }
 
         if !licenses.unsatisfied.is_empty() {
@@ -313,19 +319,26 @@ We apologize for the inconvenience."#,
                 krate.name()
             );
         } else {
-            self.regenerate([&crate_name].iter())?;
-            println!("Please edit {} and run 'regenerate' for this crate", managed_dir);
+            self.regenerate([&crate_name].iter(), true)?;
+            println!(
+                "Please edit {} and run 'regenerate' for this crate",
+                managed_dir.rel().join("cargo_embargo.json").display()
+            );
         }
 
         Ok(())
     }
-    pub fn regenerate<T: AsRef<str>>(&self, crates: impl Iterator<Item = T>) -> Result<()> {
+    pub fn regenerate<T: AsRef<str>>(
+        &self,
+        crates: impl Iterator<Item = T>,
+        run_cargo_embargo: bool,
+    ) -> Result<()> {
         let pseudo_crate = self.pseudo_crate().vendor()?;
         for crate_name in crates {
             println!("Regenerating {}", crate_name.as_ref());
             let mc = self.managed_crate_for(crate_name.as_ref())?;
             // TODO: Don't give up if there's a failure.
-            mc.regenerate(&pseudo_crate)?;
+            mc.regenerate(&pseudo_crate, run_cargo_embargo)?;
         }
 
         pseudo_crate.regenerate_crate_list()?;
@@ -652,7 +665,7 @@ We apologize for the inconvenience."#,
         for nv in &crate_updates {
             pseudo_crate.cargo_add(nv)?;
         }
-        self.regenerate(crate_updates.iter().map(|nv| nv.name()))?;
+        self.regenerate(crate_updates.iter().map(|nv| nv.name()), true)?;
         Ok(())
     }
     pub fn init(&self) -> Result<()> {

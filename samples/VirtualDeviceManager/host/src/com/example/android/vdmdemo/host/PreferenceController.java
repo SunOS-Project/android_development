@@ -113,7 +113,12 @@ final class PreferenceController {
             new BoolRule(R.string.pref_enable_client_native_ime, VANILLA_ICE_CREAM)
                     .withRequiredPermissions(ADD_TRUSTED_DISPLAY),
 
+            new BoolRule(R.string.pref_standalone_host_demo, TIRAMISU),
+
             new BoolRule(R.string.pref_record_encoder_output, TIRAMISU),
+
+            new StringRule(R.string.pref_network_channel, TIRAMISU)
+                    .withDefaultValue(String.valueOf(0)),
 
             new BoolRule(R.string.pref_enable_update_audio_policy_mixes, VANILLA_ICE_CREAM)
                     .withDefaultValue(true),

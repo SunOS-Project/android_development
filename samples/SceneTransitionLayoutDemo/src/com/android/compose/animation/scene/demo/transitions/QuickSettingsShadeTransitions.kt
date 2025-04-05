@@ -31,15 +31,19 @@ import com.android.compose.animation.scene.inContent
 import com.android.compose.animation.scene.or
 import com.android.compose.animation.scene.reveal.ContainerRevealHaptics
 import com.android.compose.animation.scene.reveal.verticalContainerReveal
+import com.android.mechanics.behavior.VerticalExpandContainerSpec
 
 val QuickSettingsToNotificationShadeFadeProgress = 0.5f
 
-fun SceneTransitionsBuilder.quickSettingsShadeTransitions(revealHaptics: ContainerRevealHaptics) {
+fun SceneTransitionsBuilder.quickSettingsShadeTransitions(
+    revealHaptics: ContainerRevealHaptics,
+    shadeMotionSpec: VerticalExpandContainerSpec,
+) {
     to(Overlays.QuickSettings) {
         spec = tween(500)
 
         sharedElement(MediaPlayer.Elements.MediaPlayer, elevateInContent = Overlays.QuickSettings)
-        verticalContainerReveal(QuickSettingsShade.Elements.Root, revealHaptics)
+        verticalContainerReveal(QuickSettingsShade.Elements.Root, shadeMotionSpec, revealHaptics)
     }
 
     from(Overlays.QuickSettings, to = Overlays.Notifications) {
